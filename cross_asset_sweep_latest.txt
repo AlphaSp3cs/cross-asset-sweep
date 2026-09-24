@@ -1,0 +1,219 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  HERMES CROSS-ASSET SWEEP  —  2026-09-24 11:30:18 UTC  ║
+║  Free Data Stack: CoinGecko + Yahoo + FRED + algoxflow + Farside  ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+──────────────────────────────────────────────────────────────────────────────
+  📊 MACRO & RATES (FRED — latest available)
+──────────────────────────────────────────────────────────────────────────────
+  Series         Name                                  Value       Date
+  ────────────── ──────────────────────────────── ────────── ──────────
+  DGS10          10Y Treasury Yield                     4.96 2026-09-22
+  DGS2           2Y Treasury Yield                      4.71 2026-09-22
+  DGS30          30Y Treasury Yield                     5.29 2026-09-22
+  DGS5           5Y Treasury Yield                      4.83 2026-09-22
+  DGS7           7Y Treasury Yield                      4.89 2026-09-22
+  BAMLH0A0HYM2   ICE BofA HY OAS (credit spread         2.68 2026-09-22
+  BAMLC0A0CMEY   ICE BofA IG Corp OAS (credit s         5.69 2026-09-22
+  SOFR           Secured Overnight Financing Ra         3.87 2026-09-22
+  EFFR           Effective Federal Funds Rate           3.88 2026-09-22
+  VIXCLS         CBOE VIX (real-time via Yahoo)        16.12 2026-09-24
+
+  KEY SIGNALS:
+    • 10Y Treasury: 4.96%  
+    • 2Y Treasury: 4.71%
+    • 30Y Treasury: 5.29%
+    • HY Credit Spread: 2.68%  ← Normal
+    • SOFR: 3.87%
+    • Effective Fed Funds: 3.88%  (target 3.75-4.00%)
+    • VIX: 16.12  
+
+──────────────────────────────────────────────────────────────────────────────
+  📈 FUTURES & COMMODITIES (Yahoo Finance — real-time during session)
+──────────────────────────────────────────────────────────────────────────────
+
+  [INDICES]
+  Symbol     Name                          Price         Change       Volume
+  ────────── ────────────────────── ──────────── ────────────── ────────────
+  ES=F       S&P 500 E-mini             7,733.25 -39.25 (-0.50%)          N/A
+  NQ=F       Nasdaq 100 E-mini         30,488.00 -276.75 (-0.90%)          N/A
+  YM=F       Dow Jones E-mini          51,718.00 -155.00 (-0.30%)          N/A
+  RTY=F      Russell 2000 E-mini        2,851.30 -8.90 (-0.31%)          N/A
+
+  [RATES/BONDS]
+  Symbol     Name                          Price         Change       Volume
+  ────────── ────────────────────── ──────────── ────────────── ────────────
+  ZB=F       30Y T-Bond                   105.50 -0.38 (-0.35%)          N/A
+  ZN=F       10Y T-Note                   105.08 +0.05 (+0.04%)          N/A
+  ZF=F       5Y T-Note                    103.68 +0.09 (+0.09%)          N/A
+  ZT=F       2Y T-Note                    101.71 +0.06 (+0.06%)          N/A
+  UB=F       Ultra T-Bond                 106.91 -0.56 (-0.52%)          N/A
+
+  [PRECIOUS METALS]
+  Symbol     Name                          Price         Change       Volume
+  ────────── ────────────────────── ──────────── ────────────── ────────────
+  GC=F       Gold                       4,296.30 -22.10 (-0.51%)          N/A
+  SI=F       Silver                        64.09 -0.87 (-1.34%)          N/A
+  PL=F       Platinum                   1,750.90 +2.30 (+0.13%)          N/A
+  PA=F       Palladium                  1,270.00 +0.50 (+0.04%)          N/A
+
+  [BASE METALS]
+  Symbol     Name                          Price         Change       Volume
+  ────────── ────────────────────── ──────────── ────────────── ────────────
+  HG=F       Copper                         6.78 +0.03 (+0.44%)          N/A
+
+  [ENERGY]
+  Symbol     Name                          Price         Change       Volume
+  ────────── ────────────────────── ──────────── ────────────── ────────────
+  CL=F       WTI Crude                     93.42 +1.26 (+1.37%)          N/A
+  BZ=F       Brent Crude                  104.98 +1.90 (+1.84%)          N/A
+  NG=F       Natural Gas                    3.19 +0.04 (+1.27%)          N/A
+  HO=F       Heating Oil                    4.61 -0.02 (-0.41%)          N/A
+  RB=F       RBOB Gasoline                  3.35 +0.01 (+0.15%)          N/A
+
+  [GRAINS/SOFTS]
+  Symbol     Name                          Price         Change       Volume
+  ────────── ────────────────────── ──────────── ────────────── ────────────
+  ZC=F       Corn                         528.50 -0.50 (-0.09%)          N/A
+  ZS=F       Soybeans                   1,324.75 +6.75 (+0.51%)          N/A
+  ZW=F       Wheat                        703.50 -5.00 (-0.71%)          N/A
+  ZM=F       Soybean Meal                 374.10 +3.50 (+0.94%)          N/A
+  ZL=F       Soybean Oil                   67.75 -0.06 (-0.09%)          N/A
+  CT=F       Cotton                        83.22 +0.33 (+0.40%)          N/A
+  SB=F       Sugar #11                     18.74 -0.06 (-0.32%)          N/A
+  CC=F       Cocoa                      5,568.00 +40.00 (+0.72%)          N/A
+  KC=F       Coffee                       273.20 -2.70 (-0.98%)          N/A
+  OJ=F       Orange Juice                 148.85 -0.80 (-0.53%)          N/A
+
+  [MEATS]
+  Symbol     Name                          Price         Change       Volume
+  ────────── ────────────────────── ──────────── ────────────── ────────────
+  LE=F       Live Cattle                  222.18 -0.17 (-0.08%)          N/A
+  GF=F       Feeder Cattle                329.20 -0.30 (-0.09%)          N/A
+  HE=F       Lean Hogs                     70.38 +0.05 (+0.07%)          N/A
+
+  [FOREX]
+  Symbol     Name                          Price         Change       Volume
+  ────────── ────────────────────── ──────────── ────────────── ────────────
+  6E=F       Euro FX                        1.14 -0.00 (-0.14%)          N/A
+  6B=F       British Pound                  1.32 -0.00 (-0.11%)          N/A
+  6J=F       Japanese Yen                   0.01  (JPY contract)
+  6S=F       Swiss Franc                    1.22 -0.00 (-0.38%)          N/A
+  6A=F       Australian Dollar              0.70 -0.00 (-0.13%)          N/A
+  6C=F       Canadian Dollar                0.71 -0.00 (-0.13%)          N/A
+  DX=F       US Dollar Index         UNAVAILABLE              —            —
+
+──────────────────────────────────────────────────────────────────────────────
+  🪙 CRYPTO (CoinGecko — free, no key)
+──────────────────────────────────────────────────────────────────────────────
+  Coin                  Price    24h Chg       Market Cap        24h Vol
+  ────────────── ──────────── ────────── ──────────────── ──────────────
+  Bitcoin          $83,539.00     -2.33% 1,678,277,800,640 44,190,846,032
+  Ethereum          $2,649.87     -2.62%  323,535,514,326 16,857,123,562
+  Ripple                $1.47     -6.66%   92,617,874,298  4,786,315,145
+  Solana              $113.47     -2.74%   66,670,626,989  4,765,315,879
+  Tron                  $0.34     -1.10%   32,206,952,718    515,581,437
+  Zcash             $1,490.44     -8.66%   25,262,021,497  1,537,025,467
+  Dogecoin              $0.09     -6.34%   14,484,535,499  1,583,305,323
+  Chainlink            $12.24     -3.72%    9,161,188,125    550,770,818
+  Cardano               $0.24     -5.45%    8,873,610,218    609,236,662
+  Stellar               $0.20     -7.05%    6,971,162,761    323,353,593
+  Bitcoin Cash        $334.94     -4.69%    6,730,235,832    841,745,980
+  Uniswap               $9.03     -6.91%    5,604,679,059  1,314,776,634
+  Near                  $4.28     -5.94%    5,588,364,101  1,910,764,873
+  Litecoin             $66.52     +6.90%    5,166,621,194  1,065,097,499
+  Avalanche 2          $10.18     -7.72%    4,509,907,616    593,317,641
+  Shiba Inu             $0.00     -6.43%    3,296,677,314    145,862,759
+  Polkadot              $1.12     -3.20%    1,900,853,609    196,436,710
+  Pepe                  $0.00     -8.89%    1,797,649,463    500,680,760
+  Internet Compu        $2.94     -5.01%    1,634,928,558    110,095,142
+  Arbitrum              $0.21     -9.06%    1,448,990,616    318,312,056
+  Jupiter Exchan        $0.29     -3.14%      958,342,807    103,043,344
+  Render Token          $1.78     -0.86%      923,247,498     73,658,230
+  Cosmos                $1.70     -5.32%      904,854,212     58,599,165
+  Injective Prot        $7.94     -1.68%      795,032,765    200,700,887
+  Curve Dao Toke        $0.33     -6.28%      517,439,872     76,631,621
+  Fetch Ai              $0.20     -3.67%      458,197,444    116,289,217
+  Bonk                  $0.00     -7.75%      311,950,510    105,283,734
+  Floki                 $0.00     -7.46%      262,554,927     37,259,254
+  Compound Gover       $23.54     +3.75%      235,442,220     53,655,630
+  Gmx                   $7.91     -5.11%       82,745,874      4,069,913
+  Sushi                 $0.25     -8.81%       70,708,136     11,197,452
+  Enjincoin             $0.03     -7.11%       54,491,734      5,982,275
+  Osmosis               $0.04     -3.48%       28,023,373      3,179,786
+  The Arena             $0.00    -13.39%        4,713,093         69,641
+  Matic Network         $0.13        N/A              N/A              0
+  Maker             $1,603.27     -3.92%              N/A        357,807
+
+  KEY CRYPTO SIGNALS:
+    • BTC: $83,539.00  -2.33%  ← UNDER $84K — yield pressure
+    • ETH: $2,649.87  -2.62%  ← Testing $2,700 support
+    • BTC/ETH volume ratio: 2.6x
+
+──────────────────────────────────────────────────────────────────────────────
+  📉 OPTIONS DERBIT/SPX GAMMA (algoxflow — free, no key)
+──────────────────────────────────────────────────────────────────────────────
+
+  SPY (spot: 763.76)
+    Regime: negative gamma
+    Call Wall: 770.00
+    Put Wall: 764.00
+    Max Pain: 768.00
+    Total GEX: $-1,043M per 1% move
+    Expected Move (1σ): 1.50%
+
+  QQQ (spot: 734.15)
+    Regime: negative gamma
+    Call Wall: 741.00
+    Put Wall: 735.00
+    Max Pain: 740.00
+    Total GEX: $-1,450M per 1% move
+    Expected Move (1σ): 2.50%
+
+  IWM (spot: 281.1)
+    Regime: negative gamma
+    Call Wall: 283.00
+    Put Wall: 280.00
+    Max Pain: 284.00
+    Total GEX: $-74M per 1% move
+    Expected Move (1σ): 1.50%
+
+  TLT (spot: 80.03)
+    Regime: negative gamma
+    Call Wall: 82.00
+    Put Wall: 80.00
+    Max Pain: 81.00
+    Total GEX: $-112M per 1% move
+    Expected Move (1σ): 1.80%
+
+──────────────────────────────────────────────────────────────────────────────
+  💰 BITCOIN ETF FLOWS (Farside — daily, free)
+──────────────────────────────────────────────────────────────────────────────
+  Latest flow row: 08 Sep 2026 | 10.7 | (17.1) | 14.5 | 8.1 | (4.7)
+
+──────────────────────────────────────────────────────────────────────────────
+  🔗 CROSS-ASSET CORRELATION SIGNALS
+──────────────────────────────────────────────────────────────────────────────
+    [📉 RATE REGIME] 10Y at 4.96% — moderate. BTC -2.33%.
+    [🟢 CREDIT CALM] HY OAS at 2.68% — normal. No stress signal.
+    [🛢️ OIL/GOLD RATIO] 0.0217 — oil/gold cross-asset signal.
+    [🪙 BTC DOMINANCE] ~96.9% (BTC/ETH only) — capital concentration signal.
+    [📈 EQUITY/CRYPTO LINK] S&P E-mini at 7,733. BTC -2.33%. Divergence possible
+
+──────────────────────────────────────────────────────────────────────────────
+  🎯 SETUP WATCHLIST (from cross-asset read)
+──────────────────────────────────────────────────────────────────────────────
+    🟡 GOLD LONG (uncorrelated)
+      GC at 4,296.30. Hormuz risk + rate correlation broken. Watch $4,200 support. TP $4,500+.
+    🟢 WTI LONG (correlated)
+      CL at 93.42. Iran premium. Stop $88. TP $100-105. Hormuz-dependent.
+    💵 USD/EUR SHORT (correlated)
+      DXY moderate — monitor for USD reversal.
+    🔬 ATR_EXPANSION SWEEP
+      Run on all 34 positive symbols. ZEC = champion. 1,354 trades, +10,191.9%. Universal across all asset classes above.
+    📉 BTC OPTIONS EXPIRY (Sep 25)
+      $16B BTC options expire Friday. Call-heavy book. Gamma play — not directional. Check algoxflow for SPX/NQ gamma flip levels.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            ✓  Saved to: /data/data/com.termux/files/home/cross_asset_sweep_latest.txt
+
+==============================================================================
+  SWEEP COMPLETE
+==============================================================================

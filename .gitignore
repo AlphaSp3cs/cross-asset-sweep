@@ -1,0 +1,17 @@
+# Exclude everything by default
+*
+# But allow these specific files
+!.gitignore
+!cross_asset_sweep.py
+!cross_asset_sweep_latest.txt
+!source_registry.md
+!deribit_fetch.py
+!deribit_btc_options.py
+!deribit_pcr.py
+!deribit_pcr_findings.md
+!final_deribit_auth.py
+!ws_auth_test.py
+!extract_auth.py
+!bundle_682.js
+!bundle_app.js
+!login_page.html
