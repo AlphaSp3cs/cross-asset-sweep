@@ -23,6 +23,9 @@
 # Zeus Brain — new files
 !zeus_ta.py
 !zeus_candles.py
+!scan_crypto_sectors.py
+!zeus_candles_sector_sync.py
+!fill_missing_symbols.py
 # Auto-generated outputs — not source, but allow them to be committed if present
 # (they're regenerated each cycle; commit the config/src, not the outputs)
 # !analysis_brief.json
