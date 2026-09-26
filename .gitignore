@@ -20,6 +20,9 @@
 !config_uber.json
 !ANALYSIS_BRIEF_GUIDE.md
 !README.md
+# Zeus Brain — new files
+!zeus_ta.py
+!zeus_candles.py
 # Auto-generated outputs — not source, but allow them to be committed if present
 # (they're regenerated each cycle; commit the config/src, not the outputs)
 # !analysis_brief.json
