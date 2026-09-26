@@ -453,6 +453,8 @@ def feature_vector(rows: List[Row]) -> Dict[str, Any]:
         "sma_20": sma(rows, 20),
         "sma_50": sma(rows, 50),
         "sma_200": sma(rows, 200),
+        "sma_30": sma(rows, 30),
+        "sma_30_prev": sma(rows[:-1], 30) if len(rows) > 30 else None,
         "ema_12": ema(rows, 12),
         "ema_26": ema(rows, 26),
         "ema_20": ema(rows, 20),
@@ -710,6 +712,101 @@ def backtest_atr_expand(
     }
 
 
+def backtest_bb_mean_revert(
+    rows: List[Row],
+    bb_period: int = 20,
+    bb_std: float = 2.0,
+    ma_period: int = 30,
+    atr_period: int = 14,
+    atr_stop_mult: float = 1.5,
+    atr_tp_mult: float = 3.0,
+    bb_touch_band: float = 0.005,  # how close to the band counts as "touch" (fraction above lower)
+) -> Dict[str, Any]:
+    """Backtest BB mean-reversion LONG: close near lower band + above MA30 filter.
+
+    Entry: close >= BB_lower AND close <= BB_lower * (1 + bb_touch_band) AND close > SMA(ma_period)
+          AND regime != downtrend (simplified: close > SMA(ma_period) serves as trend filter)
+    Stop:  entry - atr_period * atr_stop_mult
+    Target: entry + atr_period * atr_tp_mult
+    RR ratio = atr_tp_mult / atr_stop_mult (default 1:2)
+
+    Returns stats dict with BR_EPSILON breakdown.
+    """
+    min_rows = max(bb_period, ma_period, atr_period) + 5
+    if len(rows) < min_rows:
+        return {"trades": 0, "wins": 0, "losses": 0, "pnl": 0.0,
+                "wr": 0.0, "expectancy": 0.0,
+                "rr_ratio": round(atr_tp_mult / atr_stop_mult, 2),
+                "break_even_wr": round(1.0 / (1.0 + atr_tp_mult / atr_stop_mult), 3),
+                "error": "insufficient data"}
+    closes = _closes(rows)
+    highs = [r[2] for r in rows]
+    lows = [r[3] for r in rows]
+    trades, wins, losses, pnl = 0, 0, 0, 0.0
+    in_trade = False
+    entry_price = None
+    stop_price = None
+    tp_price = None
+    for i in range(min_rows - 1, len(rows)):
+        if not in_trade:
+            bb = bollinger_bands(rows[:i+1], bb_period, bb_std)  # include current bar
+            if not bb or bb.get("lower") is None:
+                continue
+            bb_lower = bb["lower"]
+            atr_v = atr(rows[:i+1], atr_period)  # include current bar
+            c = closes[i]
+            if c is None or atr_v is None:
+                continue
+            sma_now = sma(rows[:i+1], ma_period)  # include current bar — matches scan_signals
+            if sma_now is None:
+                continue
+            # "above MA30" = close > SMA30 that includes current bar (the MA30 in feature_vector)
+            above_ma30 = c > sma_now
+            # near_lower with 2% band: close within [lower, lower*1.02]
+            near_lower = c >= bb_lower and c <= bb_lower * 1.02
+            if near_lower and above_ma30:
+                in_trade = True
+                entry_price = c
+                stop_price = c - atr_v * atr_stop_mult
+                tp_price = c + atr_v * atr_tp_mult
+        else:
+            c = closes[i]
+            if c <= stop_price:
+                pnl += (stop_price - entry_price)
+                in_trade = False
+                if pnl > 0:
+                    wins += 1
+                else:
+                    losses += 1
+                trades += 1
+                entry_price = stop_price = tp_price = None
+            elif c >= tp_price:
+                pnl += (tp_price - entry_price)
+                in_trade = False
+                if pnl > 0:
+                    wins += 1
+                else:
+                    losses += 1
+                trades += 1
+                entry_price = stop_price = tp_price = None
+    wr = wins / trades if trades else 0.0
+    expectancy = (wr * atr_tp_mult - (1 - wr) * atr_stop_mult)
+    rr_ratio = atr_tp_mult / atr_stop_mult if atr_stop_mult else 0
+    return {
+        "trades": trades,
+        "wins": wins,
+        "losses": losses,
+        "pnl": round(pnl, 4),
+        "wr": round(wr, 3),
+        "avg_win_r": round(atr_tp_mult, 2),
+        "avg_loss_r": round(atr_stop_mult, 2),
+        "rr_ratio": round(rr_ratio, 2),
+        "break_even_wr": round(1.0 / (1.0 + rr_ratio), 3),
+        "expectancy_r": round(expectancy, 3),
+        "pnl_per_trade_r": round(pnl / max(trades, 1) / (atr_v if atr_v else 1), 3) if trades else None
+    }
+
+
 def backtest_rsi_reversion(
     rows: List[Row],
     period: int = 14,
@@ -825,6 +922,9 @@ def scan_signals(
         macd_sig = macd.get("signal") if isinstance(macd, dict) else None
         bb = f.get("bollinger")
         atr_v = f.get("atr_14")
+        bb_lower = bb.get("lower") if isinstance(bb, dict) else None
+        bb_upper = bb.get("upper") if isinstance(bb, dict) else None
+        ma30 = f.get("sma_30")
         regime_ = f.get("regime", "unknown")
         # Trend-following long: regime uptrend, MACD bullish, RSI 50-70
         if regime_ == "uptrend" and macd_line is not None and macd_sig is not None and macd_line > macd_sig:
@@ -869,6 +969,46 @@ def scan_signals(
                 direction = "long"
                 score = max(score, 0.70)
                 reasons.append("bb_breakout_volume")
+        # ── BB mean-reversion LONG: pullback to lower band + price above MA30 ──
+        # Rule: close within BB_lower..(BB_lower * 1.005) AND close > SMA30 (trend filter)
+        #       = "price touched the lower band but didn't break the MA30 trend line"
+        # ATR-based exits: 1.5x ATR stop, 3x ATR target = 1:2 RR
+        if bb_lower is not None and close is not None and ma30 is not None and atr_v is not None and atr_v > 0:
+            near_lower = close >= bb_lower and close <= bb_lower * 1.02  # widened to 2% above lower band for more entries
+            above_ma30 = close > ma30  # LITERAL user instruction: price above MA30 line
+            if near_lower and above_ma30:
+                signal_type = "bb_mean_revert_long"
+                direction = "long"
+                score = 0.58
+                reasons = ["bb_lower_touch", f"sma30_filter_{ma30:.2f}"]
+                if rsi is not None and rsi < 40:
+                    score = max(score, 0.62)
+                    reasons.append(f"rsi_{rsi:.0f}")
+                # ATR-based stop/target 1:2 RR
+                stop_dist = atr_v * 1.5
+                tp_dist = atr_v * 3.0
+                stop = round(close - stop_dist, 4)
+                tp = round(close + tp_dist, 4)
+                entry = round(close, 4)
+        # ── BB mean-reversion SHORT (inverse): pullback to upper band + price below MA30 ──
+        # Rule: close within BB_upper..(BB_upper * 0.995) AND close < SMA30 (trend filter)
+        #       = "price touched the upper band but didn't break above the MA30 trend line"
+        if bb_upper is not None and close is not None and ma30 is not None and atr_v is not None and atr_v > 0:
+            near_upper = close <= bb_upper and close >= bb_upper * 0.98  # widened to 2% below upper band for more entries
+            below_ma30 = close < ma30  # LITERAL inverse: price below MA30 line
+            if near_upper and below_ma30:
+                signal_type = "bb_mean_revert_short"
+                direction = "short"
+                score = 0.58
+                reasons = ["bb_upper_touch", f"sma30_filter_{ma30:.2f}"]
+                if rsi is not None and rsi > 60:
+                    score = max(score, 0.62)
+                    reasons.append(f"rsi_{rsi:.0f}")
+                stop_dist = atr_v * 1.5
+                tp_dist = atr_v * 3.0
+                stop = round(close + stop_dist, 4)
+                tp = round(close - tp_dist, 4)
+                entry = round(close, 4)
         if signal_type and direction and score >= min_score:
             if atr_v and atr_v > 0:
                 stop = round(close * (1 - 0.02) if direction == "long" else close * (1 + 0.02), 4)
@@ -945,3 +1085,20 @@ if __name__ == "__main__":
     bt3 = backtest_rsi_reversion(rows[-250:])
     for k, v in bt3.items():
         print(f"  {k}: {v}")
+    print()
+    print("=== backtest BB mean-revert LONG (last 250 of 300) ===")
+    bt4 = backtest_bb_mean_revert(rows[-250:])
+    for k, v in bt4.items():
+        print(f"  {k}: {v}")
+    print()
+    print("=== BB mean-revert signal scan on last rows ===")
+    for n in [50, 100, 150, 200, 250]:
+        fv_n = feature_vector(rows[-n:])
+        sigs_n = scan_signals({"SYNTH": fv_n}, require_mtf=False, min_score=0.5)
+        bb_sig = [s for s in sigs_n if s["signal_type"] in ("bb_mean_revert_long", "bb_mean_revert_short")]
+        print(f"  window={n}: bb_signals={len(bb_sig)}", end="")
+        if bb_sig:
+            s = bb_sig[0]
+            print(f"  type={s['signal_type']} dir={s['direction']} entry={s['entry']} stop={s['stop']} tp={s['tp']} score={s['score']} reasons={s['reasons']}")
+        else:
+            print()
