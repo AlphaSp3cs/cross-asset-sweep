@@ -15,3 +15,14 @@
 !bundle_682.js
 !bundle_app.js
 !login_page.html
+# Uber Auto Trader — new files
+!uber_autotrader.py
+!config_uber.json
+!ANALYSIS_BRIEF_GUIDE.md
+!README.md
+# Auto-generated outputs — not source, but allow them to be committed if present
+# (they're regenerated each cycle; commit the config/src, not the outputs)
+# !analysis_brief.json
+# !trade_journal.jsonl
+# Heartbeat/PID — never commit
+# .heartbeats/

@@ -1,0 +1,53 @@
+{
+  "clock_tz": "America/New_York",
+  "scan_interval_minutes": 30,
+  "dry_run": false,
+  "account_size": 10000.0,
+  "market_windows": {
+    "FULL": {"weekday": [0,1,2,3,4], "start": "09:00", "end": "16:05"},
+    "NO_EQUITIES": {"weekday": [0,1,2,3,6], "start": null, "end": null},
+    "CRYPTO_ONLY": {"weekday": [4,5,6], "start": null, "end": null}
+  },
+  "asset_buckets": {
+    "FULL": ["equities","etfs","indices","crypto","forex","oil","metals","futures"],
+    "NO_EQUITIES": ["indices","crypto","forex","oil","metals","futures"],
+    "CRYPTO_ONLY": ["crypto"]
+  },
+  "bots": {
+    "alpaca_equities": {"buckets": ["equities","etfs"], "broker": "alpaca"},
+    "mt5_forex": {"buckets": ["forex"], "broker": "mt5"},
+    "mt5_crypto": {"buckets": ["crypto"], "broker": "mt5"},
+    "mt5_indices": {"buckets": ["indices","futures"], "broker": "mt5"},
+    "mt5_commodities": {"buckets": ["oil","metals"], "broker": "mt5"}
+  },
+  "risk": {
+    "max_daily_loss_pct": 2.0,
+    "max_concurrent_positions": 6,
+    "max_exposure_per_signal_pct": 1.5,
+    "min_risk_reward": 1.0,
+    "correlation_group_threshold": 0.7,
+    "slippage_alert_pct": 0.05,
+    "api_health_timeout_seconds": 10,
+    "trail_stop_1r_breakeven": true,
+    "trail_stop_atr_multiplier": 0.5
+  },
+  "signal_scoring": {
+    "multi_tf_bonus": 0.15,
+    "volume_confirmation_bonus": 0.10,
+    "regime_fit_bonus": 0.10,
+    "recency_winrate_weight": 0.4,
+    "time_of_day_weight": 0.05,
+    "min_score_to_fire": 0.55,
+    "signal_ttl_hours": 4.0,
+    "auto_suspend_lookback": 20,
+    "auto_suspend_wr_threshold": 0.40,
+    "auto_resume_wr_threshold": 0.55
+  },
+  "journal": {
+    "path": "trade_journal.jsonl",
+    "rolling_stats_window_trades": 50
+  },
+  "heartbeat_dir": ".heartbeats",
+  "analysis_brief_path": "analysis_brief.json",
+  "telegram_alert": false
+}
