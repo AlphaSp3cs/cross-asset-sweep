@@ -118,6 +118,8 @@ def sector_group(symbol, class_):
         "forex": "Forex",
         "future": "Commodities",
         "crypto": "Crypto",
+        "fixed_income": "Fixed Income",
+        "reit": "Real Estate",
     }
     g = CLASS_MAP.get(class_)
     if g:
@@ -301,10 +303,10 @@ if not setups:
     print("  No setups found on latest windows.")
 else:
     # Group into correlated / uncorrelated buckets
-    correlated_groups = {"US Equities", "Forex", "Commodities", "Energy", "Precious Metals"}
+    correlated_groups = {"US Equities", "Forex", "Commodities", "Energy", "Precious Metals", "Fixed Income"}
     uncorrelated_groups = {"Crypto", "L1/L2", "DeFi", "Meme", "AI", "Gaming/GameFi",
                            "RWA", "Privacy", "Exchange/CEX", "Social/Farcaster",
-                           "Infra/Storage/Compute"}
+                           "Infra/Storage/Compute", "Real Estate"}
     correlated = [x for x in setups if x["group"] in correlated_groups]
     uncorrelated = [x for x in setups if x["group"] in uncorrelated_groups]
 

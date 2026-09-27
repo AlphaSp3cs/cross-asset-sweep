@@ -677,16 +677,155 @@ PRIORITY = {
     "etf": ["yahoo"],
     "future": ["yahoo"],
     "forex": ["yahoo"],
+    "fixed_income": ["yahoo"],
+    "reit": ["yahoo"],
 }
 
 
 def resolve_symbol(symbol: str, class_: str) -> Dict[str, Any]:
-    """Return info for a symbol: class, which sources to try, and per-source mapped symbol."""
+    """Return info for a symbol: class, which sources to try, and per-source mapped symbol.
+
+    Handles Yahoo ticker conventions:
+      - Equities/ETFs: 'SPY', 'VTI', 'IWM', 'EFA', 'VWO', 'VNQ', 'SHY', 'IEF', 'TLT',
+        'BND', 'TIP', 'LQD', 'HYG', 'VLUE', 'MTUM', 'DFAC', 'DFLV', 'DSV', 'DGS', 'DFAS',
+        'DFAT', 'DFASX', 'DFSTX', 'DGRO', 'DHCP', 'DHSS', 'DISV', 'DFAS'
+      - Fixed Income: 'SHY', 'IEF', 'TLT', 'BND', 'TIP', 'LQD', 'HYG', 'VTIP', 'VCSH',
+        'MUB', 'PFF', 'ICLN', 'XLU', 'XLE', 'XLF', 'XLV', 'XLI', 'XLP', 'XLY', 'XLB',
+        'XLK', 'XLU', 'XLV', 'XLF', 'XLI', 'XLP', 'XLY', 'XLB', 'XLU', 'XLE', 'XLF',
+        'XLI', 'XLP', 'XLY', 'XLB'
+      - REITs: 'VNQ', 'IYR', 'XLRE', 'SCHH', 'USRT', 'FREL', 'REM', 'REZ'
+    """
+    yahoo_map = {
+        # ── DFA asset universe: primary tickers ──
+        # US equities — size/value/profitability spectrum
+        "VTI":  "VTI",   # US total market (DFA: US Equity Market / Core Equity proxy)
+        "ITOT": "ITOT",  # related: iShares total market (cheaper, same exposure)
+        "IWM":  "IWM",   # Russell 2000 small cap (DFA: US Small Cap)
+        "MDY":  "MDY",   # related: S&P MidCap 400
+        "IWC":  "IWC",   # Russell MicroCap (DFA: US Micro Cap / DFMC)
+        "FNCM": "FNCM",  # related: First Trust National Micro Cap
+        "VLUE": "VLUE",  # iShares MSCI USA Value Factor (DFA: value tilt benchmark)
+        "AVUV": "AVUV",  # related: Avantis US Small Cap Value (pure value + small)
+        "MTUM": "MTUM",  # iShares MSCI USA Momentum Factor (DFA: momentum as trading signal)
+        "MOM":  "MOM",   # related: iShares MSCI USA Momentum Factor (same)
+        "DGRO": "DGRO",  # iShares Core Dividend Growth (DFA: profitability proxy)
+        "DHCP": "DHCP",  # related: Dimensional High Dividend (DFA's own high-yield tilt)
+        "DFLV": "DFLV",  # DFA Large Cap Value ETF (DFA's flagship value)
+        "DFVX": "DFVX",  # related: DFA US Large Cap Vector ETF (DFA large-cap vector)
+        "DFSV": "DFSV",  # DFA Small Cap Value ETF (DFA's small-cap value flagship)
+        "DFAS": "DFAS",  # related: DFA US Small Cap ETF (DFA small-cap core)
+        "DFAT": "DFAT",  # DFA US Targeted Value ETF (aggressive value tilt)
+        "DFFVX":"DFFVX", # related: DFA US Targeted Value Portfolio (I) — same strategy
+        "DUHP": "DUHP",  # DFA US High Profitability ETF (profitability factor)
+        "DURPX":"DURPX", # related: DFA US High Relative Profitability Portfolio (I)
+        "DSV":  "DSV",   # iShares MSCI USA ESG Select (DFA: sustainability lens)
+        "DFSU": "DFSU",  # related: DFA US Sustainability Core 1 ETF
+        # International developed
+        "EFA":  "EFA",   # iShares MSCI EAFE (DFA: International Core Equity proxy)
+        "VEA":  "VEA",   # related: Vanguard FTSE Developed Markets
+        "IEV":  "IEV",   # iShares Europe (DFA Intl developed Europe exposure)
+        "EWJ":  "EWJ",   # iShares Japan (DFA Intl Japan)
+        "EWC":  "EWC",   # iShares Canada (DFA Intl Canada)
+        "EWA":  "EWA",   # iShares Australia (DFA Intl Australia)
+        "EWN":  "EWN",   # iShares Netherlands (DFA Intl Netherlands)
+        "EZA":  "EZA",   # iShares South Africa (DFA Intl South Africa)
+        "EWU":  "EWU",   # iShares UK (DFA Intl UK)
+        "EWL":  "EWL",   # iShares Switzerland (DFA Intl Switzerland)
+        "EWO":  "EWO",   # iShares Austria (DFA Intl Austria)
+        "ENZL": "ENZL",  # iShares Sweden (DFA Intl Sweden)
+        "EQP":  "EQP",   # related: Global X MSCI Nigeria — not DFA; skip
+        "DFIEX":"DFIEX", # DFA International Core Equity 2 Portfolio (I) — DFA's Intl core
+        "DFIC": "DFIC",  # related: DFA International Core Equity 2 ETF
+        "DFAI": "DFAI",  # DFA International Equity Market ETF (DFA Intl total market)
+        "DFIS": "DFIS",  # DFA International Small Cap ETF (DFA Intl small-cap)
+        "DISV": "DISV",  # related: DFA Intl Small Cap Value ETF
+        "DISMX":"DISMX", # related: DFA Intl Small Cap Growth Portfolio (I)
+        "DFIV": "DFIV",  # DFA International Value ETF (DFA Intl value)
+        "DXIV": "DXIV",  # related: DFA International Vector Equity ETF
+        "DIHRX":"DIHRX", # DFA Intl High Relative Profitability Portfolio
+        "DIHP": "DIHP",  # related: DFA Intl High Profitability ETF
+        "DFISX":"DFISX", # related: DFA Intl Small Company Portfolio (I)
+        "DFCSX":"DFCSX", # Continental Small Company Portfolio (I) — DFA Intl small
+        "DSCLX":"DSCLX", # DFA Intl Social Core Equity Portfolio
+        "DFSPX":"DFSPX", # related: DFA Intl Sustainability Core 1 Portfolio (I)
+        "DFVIX":"DFVIX", # DFA Intl Value Portfolio (III) — institutional only
+        "DFIVX":"DFIVX", # DFA Intl Value Portfolio (I) — DFA Intl value flagship
+        "DFISX":"DFISX", # DFA Intl Small Company Portfolio (I) — DFA Intl small
+        "DFCSX":"DFCSX", # Continental Small Company Portfolio (I)
+        # Emerging Markets
+        "VWO":  "VWO",   # Vanguard FTSE Emerging Markets (DFA: EM proxy)
+        "IEMG": "IEMG",  # related: iShares Core MSCI Emerging Markets
+        "EEM":  "EEM",   # iShares MSCI Emerging Markets (DFA: EM, higher cost)
+        "DFESX":"DFESX", # related: DFA Emerging Markets Portfolio (I)? — check; not on Yahoo
+        # US Real Estate / REITs
+        "VNQ":  "VNQ",   # Vanguard Real Estate ETF (DFA: Real Estate Securities proxy)
+        "IYR":  "IYR",   # related: iShares U.S. Real Estate ETF
+        "XLRE": "XLRE",  # related: Real Estate Select Sector SPDR
+        "SCHH": "SCHH",  # related: Schwab U.S. REIT ETF
+        "USRT": "USRT",  # related: iShares Core U.S. REIT ETF
+        "FREL": "FREL",  # related: Fidelity MSCI Real Estate ETF
+        "DFESX":"DFESX", # DFA Global/Intl Real Estate — not free on Yahoo; skip
+        # ── Fixed Income ladder: term + credit + inflation ──
+        # Treasury term structure (DFA: term premium)
+        "SHY":  "SHY",   # iShares 1-3 Year Treasury (short end of ladder)
+        "IEI":  "IEI",   # related: iShares 3-7 Year Treasury (belly)
+        "IEF":  "IEF",   # iShares 7-10 Year Treasury (DFA: intermediate term)
+        "TLT":  "TLT",   # iShares 20+ Year Treasury (long end — DFA: long term)
+        "VGIT": "VGIT",  # related: Vanguard Intermediate-Term Treasury ETF
+        "VGSH": "VGSH",  # related: Vanguard Short-Term Treasury ETF (DFA: short govt)
+        "GOVT": "GOVT",  # related: iShares U.S. Treasury Bond ETF (broad govt)
+        # Aggregate / broad bond (DFA: Core Fixed Income proxy)
+        "BND":  "BND",   # Vanguard Total Bond Market (DFA: US Core Fixed Income proxy)
+        "AGG":  "AGG",   # related: iShares Core U.S. Aggregate Bond ETF
+        "VGCA": "VGCA",  # related: Vanguard Global ex-U.S. Government Bond — not on Yahoo
+        "IUSB": "IUSB",  # related: iShares Core U.S. Aggregate Bond — same as AGG
+        # TIPS (DFA: inflation-protected / real return)
+        "TIP":  "TIP",   # iShares TIPS Bond ETF (DFA: inflation-protected)
+        "VTIP": "VTIP",  # related: Vanguard Short-Term Inflation-Protected
+        "STIP": "STIP",  # related: iShares 0-5 Year TIPS Bond ETF
+        "SCHP": "SCHP",  # related: Schwab U.S. TIPS ETF
+        # Investment-grade corporate (DFA: credit premium, IG side)
+        "LQD":  "LQD",   # iShares iBoxx $ Investment Grade Corporate Bond
+        "VCIT": "VCIT",  # related: Vanguard Intermediate-Term Corporate Bond ETF
+        "VCSH": "VCSH",  # related: Vanguard Short-Term Corporate Bond ETF
+        "IGIB": "IGIB",  # related: iShares iBoxx $ IB Investment Grade 5-10 Year
+        "USIG": "USIG",  # related: SPDR® Portfolio Intermediate Investment Grade
+        # High-yield (DFA: credit premium, below-IG fringe)
+        "HYG":  "HYG",   # iShares iBoxx $ High Yield Corporate Bond
+        "JNK":  "JNK",   # related: SPDR Bloomberg High Yield Bond ETF
+        "SHYG": "SHYG",  # related: VanEck High Yield Bond ETF (short-duration HY)
+        "HYLS": "HYLS",  # related: Xtrackers High Yield Bond ETF — not on Yahoo
+        # Municipals (DFA: municipal bond strategies)
+        "MUB":  "MUB",   # iShares National Muni Bond ETF (DFA: muni exposure)
+        "TFI":  "TFI",   # related: JPM US Municipal ETF
+        "SUB":  "SUB",   # related: iShares Short-Term National Muni ETF
+        "PZT":  "PZT",   # related: Invesco State & Local Tax-Exempt Bond ETF
+        # Preferred / income via equity (DFA: income + fixed-income-adjacent)
+        "PFF":  "PFF",   # iShares Preferred and Income Securities (DFA: preferred income)
+        "PFFA": "PFFA",  # related: PIMCO Enhanced Short Maturity Active ETF — not on Yahoo
+        "JEPQ": "JEPQ",  # related: JPMorgan Nasdaq Equity Premium Income — equity option income
+        # Sector bond proxies (equity, but fixed-income-like behavior)
+        "XLU":  "XLU",   # Utilities Select Sector (DFA: defensive / bond-proxy sector)
+        "XLV":  "XLV",   # Health Care Select Sector (DFA: defensive sector)
+        "XLP":  "XLP",   # Consumer Staples Select Sector (DFA: defensive sector)
+        "XLRE": "XLRE",  # Real Estate Select Sector (REITs via equity)
+        "XLF":  "XLF",   # Financials Select Sector (DFA: financial sector / banks)
+        # ── Cross-asset / macro proxies DFA would monitor ──
+        "GLD":  "GLD",   # SPDR Gold Shares (DFA: real asset / inflation hedge)
+        "IAU":  "IAU",   # related: iShares Gold Trust (cheaper gold)
+        "GDX":  "GDX",   # related: VanEck Gold Miners ETF (gold equity)
+        "UNG":  "UNG",   # related: United States Natural Gas Fund — commodity
+        "DBC":  "DBC",   # related: Invesco DBA Commodity Index Tracking Fund
+        "USO":  "USO",   # related: United States Oil Fund (oil proxy)
+        "DBA":  "DBA",   # related: Invesco DBA Agriculture (agriculture)
+        "DXF":  "DXF",   # related: Invesco Deutsche Xtrackers Gold — not on Yahoo
+    }
+
     return {
         "symbol": symbol,
         "class": class_,
         "sources": PRIORITY.get(class_, ["yahoo"]),
-        "yahoo_symbol": symbol,  # yahoo uses its own tickers
+        "yahoo_symbol": yahoo_map.get(symbol, symbol),
     }
 
 
@@ -925,14 +1064,102 @@ if __name__ == "__main__":
             if fv:
                 print(f"  features: close={fv['close']} rsi_14={fv['rsi_14']} regime={fv['regime']}")
 
-        # Yahoo-based symbols
-        for sym, class_, tf in [
-            ("BTC-USD", "crypto", "1h"),
-            ("SPY", "equity", "1d"),
-            ("EURUSD=X", "forex", "1h"),
-            ("CL=F", "future", "1d"),
-            ("GC=F", "future", "1d"),
-        ]:
+        # Yahoo-based symbols — DFA asset universe
+        dfa_symbols = [
+            # ── US equities: size/value/profitability spectrum ──
+            ("VTI",  "equity", "1d"),   # US total market
+            ("ITOT", "equity", "1d"),   # related: iShares total market
+            ("IWM",  "equity", "1d"),   # Russell 2000 small cap
+            ("MDY",  "equity", "1d"),   # related: S&P MidCap 400
+            ("IWC",  "equity", "1d"),   # Russell MicroCap
+            ("FNCM", "equity", "1d"),   # related: First Trust National Micro Cap
+            ("VLUE", "equity", "1d"),   # iShares MSCI USA Value Factor
+            ("AVUV", "equity", "1d"),   # related: Avantis US Small Cap Value
+            ("MTUM", "equity", "1d"),   # iShares MSCI USA Momentum Factor
+            ("MOM",  "equity", "1d"),   # related: iShares MSCI USA Momentum
+            ("DGRO", "equity", "1d"),   # iShares Core Dividend Growth
+            ("DHCP", "equity", "1d"),   # related: Dimensional High Dividend
+            ("DFLV", "equity", "1d"),   # DFA Large Cap Value ETF
+            ("DFVX", "equity", "1d"),   # related: DFA US Large Cap Vector ETF
+            ("DFSV", "equity", "1d"),   # DFA Small Cap Value ETF
+            ("DFAS", "equity", "1d"),   # related: DFA US Small Cap ETF
+            ("DFAT", "equity", "1d"),   # DFA US Targeted Value ETF
+            ("DUHP", "equity", "1d"),   # DFA US High Profitability ETF
+            ("DURPX","equity", "1d"),   # related: DFA US High Rel Profitability (I)
+            ("DSV",  "equity", "1d"),   # iShares MSCI USA ESG Select
+            ("DFSU", "equity", "1d"),   # related: DFA US Sustainability Core 1 ETF
+            # ── International developed ──
+            ("EFA",  "equity", "1d"),   # iShares MSCI EAFE (DFA Intl core proxy)
+            ("VEA",  "equity", "1d"),   # related: Vanguard FTSE Developed Markets
+            ("IEV",  "equity", "1d"),   # iShares Europe
+            ("EWJ",  "equity", "1d"),   # iShares Japan
+            ("EWC",  "equity", "1d"),   # iShares Canada
+            ("EWA",  "equity", "1d"),   # iShares Australia
+            ("EWN",  "equity", "1d"),   # iShares Netherlands
+            ("EZA",  "equity", "1d"),   # iShares South Africa
+            ("EWU",  "equity", "1d"),   # iShares UK
+            ("EWL",  "equity", "1d"),   # iShares Switzerland
+            ("EWO",  "equity", "1d"),   # iShares Austria
+            ("ENZL", "equity", "1d"),   # iShares Sweden
+            ("DFIEX","equity", "1d"),   # DFA International Core Equity 2 Portfolio (I)
+            ("DFIC", "equity", "1d"),   # related: DFA Intl Core Equity 2 ETF
+            ("DFAI", "equity", "1d"),   # DFA International Equity Market ETF
+            ("DFIS", "equity", "1d"),   # DFA International Small Cap ETF
+            ("DISV", "equity", "1d"),   # related: DFA Intl Small Cap Value ETF
+            ("DISMX","equity", "1d"),   # related: DFA Intl Small Cap Growth (I)
+            ("DFIV", "equity", "1d"),   # DFA International Value ETF
+            ("DXIV", "equity", "1d"),   # related: DFA Intl Vector Equity ETF
+            ("DIHRX","equity", "1d"),   # DFA Intl High Rel Profitability Portfolio
+            ("DIHP", "equity", "1d"),   # related: DFA Intl High Profitability ETF
+            ("DFCSX","equity", "1d"),   # Continental Small Company Portfolio (I)
+            ("DSCLX","equity", "1d"),   # DFA Intl Social Core Equity Portfolio
+            # ── Emerging Markets ──
+            ("VWO",  "equity", "1d"),   # Vanguard FTSE Emerging Markets
+            ("IEMG", "equity", "1d"),   # related: iShares Core MSCI EM
+            ("EEM",  "equity", "1d"),   # iShares MSCI Emerging Markets
+            # ── Fixed Income (DFA: term + credit + inflation) ──
+            ("SHY",  "fixed_income", "1d"),  # iShares 1-3 Year Treasury
+            ("IEI",  "fixed_income", "1d"),  # related: iShares 3-7 Year Treasury
+            ("IEF",  "fixed_income", "1d"),  # iShares 7-10 Year Treasury
+            ("TLT",  "fixed_income", "1d"),  # iShares 20+ Year Treasury
+            ("VGIT", "fixed_income", "1d"),  # related: Vanguard Intermediate Treasury
+            ("VGSH", "fixed_income", "1d"),  # related: Vanguard Short Treasury
+            ("GOVT", "fixed_income", "1d"),  # related: iShares U.S. Treasury Bond
+            ("BND",  "fixed_income", "1d"),  # Vanguard Total Bond Market
+            ("AGG",  "fixed_income", "1d"),  # related: iShares Core US Aggregate
+            ("TIP",  "fixed_income", "1d"),  # iShares TIPS Bond ETF
+            ("VTIP", "fixed_income", "1d"),  # related: Vanguard Short-Term TIPS
+            ("STIP", "fixed_income", "1d"),  # related: iShares 0-5 Year TIPS
+            ("SCHP", "fixed_income", "1d"),  # related: Schwab U.S. TIPS
+            ("LQD",  "fixed_income", "1d"),  # iShares iBoxx IG Corporate
+            ("VCIT", "fixed_income", "1d"),  # related: Vanguard Intermediate Corporate
+            ("VCSH", "fixed_income", "1d"),  # related: Vanguard Short-Term Corporate
+            ("IGIB", "fixed_income", "1d"),  # related: iShares IG 5-10 Year
+            ("USIG", "fixed_income", "1d"),  # related: SPDR Intermediate IG
+            ("HYG",  "fixed_income", "1d"),  # iShares iBoxx High Yield
+            ("JNK",  "fixed_income", "1d"),  # related: SPDR Bloomberg High Yield
+            ("SHYG", "fixed_income", "1d"),  # related: VanEck High Yield
+            ("MUB",  "fixed_income", "1d"),  # iShares National Muni Bond
+            ("TFI",  "fixed_income", "1d"),  # related: JPM US Municipal
+            ("SUB",  "fixed_income", "1d"),  # related: iShares Short-Term Muni
+            ("PZT",  "fixed_income", "1d"),  # related: Invesco State & Local Tax
+            ("PFF",  "fixed_income", "1d"),  # iShares Preferred and Income Securities
+            ("XLU",  "equity", "1d"),        # Utilities — bond-proxy sector
+            ("XLV",  "equity", "1d"),        # Health Care — defensive sector
+            ("XLP",  "equity", "1d"),        # Consumer Staples — defensive sector
+            # ── REITs (DFA: Real Estate Securities) ──
+            ("VNQ",  "reit", "1d"),          # Vanguard Real Estate ETF
+            ("IYR",  "reit", "1d"),          # related: iShares U.S. Real Estate
+            ("XLRE", "reit", "1d"),          # related: Real Estate Select Sector
+            ("SCHH", "reit", "1d"),          # related: Schwab U.S. REIT
+            ("USRT", "reit", "1d"),          # related: iShares Core U.S. REIT
+            ("FREL", "reit", "1d"),          # related: Fidelity MSCI Real Estate
+            # ── Cross-asset / macro proxies ──
+            ("GLD",  "equity", "1d"),        # SPDR Gold Shares
+            ("IAU",  "equity", "1d"),        # related: iShares Gold Trust
+            ("GDX",  "equity", "1d"),        # related: VanEck Gold Miners
+        ]
+        for sym, class_, tf in dfa_symbols:
             ok, src, cnt = fetch_candles_for(db, sym, class_, tf, refresh_minutes=60)
             print(f"{sym} {class_} {tf}: ok={ok} source={src} count={cnt}")
             if ok:
