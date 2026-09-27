@@ -1,284 +1,260 @@
 #!/usr/bin/env python3
 """
-Fill remaining 57 missing symbols via CoinGecko historical daily candles
-(backup: Coinbase /v2/exchange-rates for current price snapshot).
+Fill missing symbols — Yahoo Finance (primary) + CoinGecko (fallback) + Coinbase (last resort).
 
-CoinGecko /coins/{id}/market_chart/range?vs_currency=usd&from=...&to=...
-returns up to 90 days × 24h candles for free (no key needed, rate limit ~10-30/min).
-We fetch 90-day range, get ~90 OHLC data points per symbol, insert into DB.
-Also fetch current price from Coinbase /v2/exchange-rates (free, no HMAC) for any symbol
-that CoinGecko doesn't cover.
+Yahoo Finance "/v8/finance/chart/{BASE}-USD" returns 180+ days of daily OHLCV
+for most established crypto — free, no key, no practical rate limits.
+CoinGecko 90d market_chart/range as fallback for coins Yahoo doesn't cover.
+Coinbase /v2/exchange-rates synthetic 1-candle only as last resort (sanity-checked).
 """
 
-import sys, json, time, sqlite3, ssl, urllib.request, urllib.error
+import sys, json, time, sqlite3, ssl, urllib.request, urllib.error, urllib.parse
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, '/data/data/com.termux/files/home')
 
 DB_PATH = '/data/data/com.termux/files/home/zeus_brain.db'
-COINBASE_KEY = '0a7f9351-bf83-487f-a976-17fe27eccf37'
 
 now = datetime.now(timezone.utc)
 to_ts = int(now.timestamp())
-from_ts = int((now - timedelta(days=90)).timestamp())
+ctx = ssl.create_default_context()
 
-def _fetch(url, timeout_s=15, headers=None):
-    ctx = ssl.create_default_context()
-    req = urllib.request.Request(url, headers=headers or {})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout_s, context=ctx) as r:
-            return json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        return {'_http_error': e.code}
-    except Exception as e:
-        return {'_error': str(e)}
 
-# ── mapping: USDT symbol → CoinGecko coin id (for coins that CG covers) ──────
-# We know from the 70-ready scan that CG covers ~70 symbols via bybit/cc chain.
-# The missing ones fall into two buckets:
-#  (a) CG covers but Bybit/OKX/CC/BINANCE tickers failed → use CG id directly
-#  (b) CG also doesn't cover (very new coins, DEX-only) → use Coinbase rate only
+# ── Yahoo Finance 180d daily candles ──────────────────────────────────────────
+def yahoo_daily(sym_usdt, max_days=180):
+    """Return list of (ts, open, high, low, close, volume) or None."""
+    base = sym_usdt.replace("USDT", "").replace("USD", "").upper()
+    from_ts = int((now - timedelta(days=max_days)).timestamp())
+    for ticker in [f"{base}-USD", f"{base}USD=X"]:
+        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(ticker)}"
+               f"?period1={from_ts}&period2={to_ts}&interval=1d&events=history")
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; zeus-bot/1.0)"})
+        try:
+            with urllib.request.urlopen(req, timeout=15, context=ctx) as r:
+                data = json.loads(r.read().decode())
+            result = data.get("chart", {}).get("result", [])
+            if not result:
+                continue
+            res = result[0]
+            ts_raw = res.get("timestamp", [])
+            q = res.get("indicators", {}).get("quote", [{}])[0]
+            o = q.get("open", [])
+            h = q.get("high", [])
+            l = q.get("low", [])
+            c = q.get("close", [])
+            v = q.get("volume", [])
+            if not c or all(x is None for x in c):
+                continue
+            rows = []
+            for i in range(len(ts_raw)):
+                if c[i] is None:
+                    continue
+                rows.append((ts_raw[i], o[i] or c[i], h[i] or c[i], l[i] or c[i], c[i], v[i] or 0))
+            if len(rows) >= 10:
+                return rows
+        except Exception:
+            continue
+    return None
 
-# CoinGecko ids for the missing symbols (manually mapped from known CG id list)
-CG_ID_MAP = {
-    # Exchange tokens
-    "BNBUSDT":      "binancecoin",
-    "OKBUSDT":      "okb",
-    "KCSUSDT":       "kucoin-token",
-    "FTMUSDT":       "fantom",
-    "LEOUSDT":       "unus-sed-leo",
-    "FTTUSDT":        None,   # FTX dead — use Coinbase price only if available
-    "KINUSDT":       "kin",
-    "GTUSDT":         "gatechain-token",
-    # DeFi
-    "OHMUSDT":       "olympus",
-    "DEUSDT":        "decentralized-ether",
-    "DEGENUSDT":     "degens-token",
-    # Gaming
-    "GOALUSDT":      "goal-token",
-    "PIXELFUSDT":    None,
-    "VRDRWDUSDT":    None,
-    "ULTUSDT":       "ultimate-backdrop",
-    "WOKUSDT":       None,  # could be WorkFi / WoK
-    # Meme
-    "MYROUSDT":      "myro",
-    "MOGUSDT":       "mog-coin",
-    "WENUSDT":       "wen-coin",
-    "TREMPUSDT":     "tremp",
-    "ADMINUSDT":     "admin-coin",
-    "CZIUSDT":       "coinzoom",
-    "VANUSDT":       "vanin-network",
-    # Social
-    "FCUSDT":        "farcaster",
-    "YOLOUSDT":      "yolo",
-    "NEIROUSDT":     "neiro",
-    "MUMBAIUSDT":    None,
-    "VINEUSDT":      "vine-co",
-    "TNSUSDT":       "ternoa",
-    "ZROUSDT":       "zero-network",
-    # Privacy
-    "XMRUSDT":       "monero",
-    "DASHUSDT":      "dash",
-    "OMUSDT":        "omisego",
-    "CACUSDT":       None,  # could be Casper or Cactus
-    "PRIVACYUSDT":   "privacy",
-    "FIRUSDT":       "firmachain",
-    "ZNTUSDT":       "znet",
-    # Infra / Storage
-    "FILUSDT":       "filecoin",
-    "ARUSDT":        "arweave",
-    "RPLUSDT":       "rocket-pool-token",
-    "STORJUSDT":     "storj",
-    "TFLOUSDT":      "flow-token",
-    "SCUSDT":        "siacoin",
-    "DENTUSDT":      "dent",
-    "IOTXUSDT":      "iotex",
-    "AGIUSDT":       "singularitynet",
-    "NMRUSDT":       "numeraire",
-    "CVCUSDT":       "coventry",
-    "QNTUSDT":       "quant",
-    "MVIUSDT":       "media-vision",
-    "BANDUSDT":      "band-protocol",
-    "UMAUSDT":       "uma",
-    # RWA
-    "BANXAUSDT":     None,
-    "REALUSDT":      "real-world-asset",
-    "PQUSDT":        None,
-    "PROPUSDT":      None,
-    "READYUSDT":     None,
-    "PORTUSDT":      "porto",
-    "TLOSUSDT":      "telos",
-    "REALUSDT":      "real-yield",
-    # AI
-    "TENSORSUSDT":   None,
-    "HAIUSDT":       "haiku-token",
-    # Misc
-    "ZECUSDT":       "zcash",
-}
 
-# Strings that signal "not in CG" (None already means skip CG)
-CG_SKIP = set()  # populated below
-
-# ── CoinGecko 90-day daily candle fetcher ─────────────────────────────────────
-def cg_daily(symbol_usdt, cg_id):
-    """Fetch 90 days of daily candles from CoinGecko market_chart/range.
-    Returns list of (ts, open, high, low, close, volume) tuples.
-    """
+# ── CoinGecko 90d daily (fallback) ─────────────────────────────────────────────
+def cg_daily(cg_id, max_days=90):
     if cg_id is None:
         return None
-    url = (
-        f"https://api.coingecko.com/api/v3/coins/{urllib.parse.quote(cg_id)}"
-        f"/market_chart/range"
-        f"?vs_currency=usd&from={from_ts}&to={to_ts}"
-    )
-    data = _fetch(url, timeout_s=20)
+    from_ts = int((now - timedelta(days=max_days)).timestamp())
+    url = (f"https://api.coingecko.com/api/v3/coins/{urllib.parse.quote(cg_id)}"
+           f"/market_chart/range?vs_currency=usd&from={from_ts}&to={to_ts}")
+    req = urllib.request.Request(url, headers={"User-Agent": "zeus-bot/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as r:
+            data = json.loads(r.read().decode())
+    except Exception:
+        return None
     if data is None or '_http_error' in data:
         return None
-    # CG returns: {"prices":[[ts,price],...], "market_caps":..., "total_volumes":...}
-    prices = data.get('prices', [])
-    volumes = data.get('total_volumes', [])
+    prices = data.get("prices", [])
+    volumes = data.get("total_volumes", [])
     if not prices:
         return None
-    # Convert to daily OHLC (CG gives only price, not high/low/open — use close as O=H=L=C)
-    # For volume, use total_volumes if available, else 0
-    vol_map = {int(v[0]/1000)*1000: v[1] for v in volumes}  # bucket by day
+    vol_by_day = {}
+    for v in volumes:
+        day = int(v[0] / 86400000) * 86400000
+        vol_by_day[day] = v[1]
+    seen = set()
     rows = []
-    seen_days = set()
-    for tprice in prices:
-        ts_ms = tprice[0]
-        day = int(ts_ms / 86400000) * 86400000  # bucket to day
-        if day in seen_days:
+    for pt in prices:
+        ts_ms = pt[0]
+        day = int(ts_ms / 86400000) * 86400000
+        if day in seen:
             continue
-        seen_days.add(day)
-        price = tprice[1]
-        vol = vol_map.get(day, 0)
-        rows.append((day/1000, price, price, price, price, vol))
-    return rows if rows else None
+        seen.add(day)
+        price = pt[1]
+        vol = vol_by_day.get(day, 0)
+        rows.append((int(day / 1000), price, price, price, price, vol))
+    return rows if len(rows) >= 10 else None
 
-# ── Coinbase price snapshot (free, no HMAC) ────────────────────────────────────
-def coinbase_price():
-    """Return dict {symbol: price_in_usd} for all coins Coinbase covers."""
-    url = f"https://api.coinbase.com/v2/exchange-rates?currency=USD&key={COINBASE_KEY}"
-    data = _fetch(url, timeout_s=20)
-    if data is None or 'data' not in data:
+
+# ── Coinbase /v2/exchange-rates (last resort) ─────────────────────────────────
+def coinbase_rates():
+    url = "https://api.coinbase.com/v2/exchange-rates?currency=USD"
+    req = urllib.request.Request(url, headers={"User-Agent": "zeus-bot/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=20, context=ctx) as r:
+            data = json.loads(r.read().decode())
+        return data.get("data", {}).get("rates", {})
+    except Exception:
         return {}
-    rates = data['data'].get('rates', {})
-    return rates  # {asset: rate_string}
 
-# ── Symbol → Coinbase asset name (for the 57 missing) ─────────────────────────
-# Coinbase assets use names like 'BTC', 'ETH', 'SOL', 'SOL', etc.
-# Map our USDT symbol base to Coinbase asset code
-CB_ASSET_MAP = {
-    "BNBUSDT": "BNB", "OKBUSDT": "OKB", "KCSUSDT": "KCS", "FTMUSDT": "FTM",
-    "LEOUSDT": "LEO", "KINUSDT": "KIN", "GTUSDT": "GT",
-    "OHMUSDT": "OHM", "DEGENUSDT": "DEGEN",
-    "GOALUSDT": "GALA", "WOKUSDT": "WOK",
-    "MYROUSDT": "MYRO", "MOGUSDT": "MOG", "WENUSDT": "WEN", "TREMPUSDT": "TREMP",
-    "ADMINUSDT": "ADMIN", "TYPUSDT": "TYP",
-    "FCUSDT": "FC", "YOLOUSDT": "YOLO", "NEIROUSDT": "NEIRO", "MUMBAIUSDT": "MUMBAI",
-    "VINEUSDT": "VINE", "TNSUSDT": "TNS", "ZROUSDT": "ZRO",
-    "XMRUSDT": "XMR", "DASHUSDT": "DASH", "OMUSDT": "OM",
-    "PRIVACYUSDT": "PRIVACY", "FIRUSDT": "FIRM", "ZNTUSDT": "ZNT",
-    "FILUSDT": "FIL", "ARUSDT": "AR", "RPLUSDT": "RPL", "STORJUSDT": "STORJ",
-    "TFLOUSDT": "FLOW", "SCUSDT": "SC", "DENTUSDT": "DENT", "IOTXUSDT": "IOTX",
-    "AGIUSDT": "AGIX", "NMRUSDT": "NMR", "CVCUSDT": "CVC", "QNTUSDT": "QNT",
-    "MVIUSDT": "MVI", "BANDUSDT": "BAND", "UMAUSDT": "UMA",
-    "REM":"DEFAULT",  # REAL/USDT not clear
-    "ZECUSDT": "ZEC", "HAIUSDT": "HAI",
-    "AF8":"AF8",
+
+CB_ASSET_FOR = {
+    "OKBUSDT":"OKB","KCSUSDT":"KCS","FTTUSDT":"FTT","GTUSDT":"GT","KINUSDT":"KIN",
+    "LEOUSDT":"LEO","XMRUSDT":"XMR","DENTUSDT":"DENT","IOTXUSDT":"IOTX","SCUSDT":"SC",
+    "STORJUSDT":"STORJ","RPLUSDT":"RPL","NMRUSDT":"NMR","FILUSDT":"FIL","TFLOUSDT":"FLOW",
+    "QNTUSDT":"QNT","BANDUSDT":"BAND","UMAUSDT":"UMA","MVIUSDT":"MVI","CVCUSDT":"CVC",
+    "DASHUSDT":"DASH","ZECUSDT":"ZEC","ARUSDT":"AR","AGIUSDT":"AGIX",
+    "DEGENUSDT":"DEGEN","FCUSDT":"FC","YOLOUSDT":"YOLO","NEIROUSDT":"NEIRO",
+    "MYROUSDT":"MYRO","MOGUSDT":"MOG","WENUSDT":"WEN","TREMPUSDT":"TREMP",
+    "ADMINUSDT":"ADMIN","TYPUSDT":"TYP","OHMUSDT":"OHM","DEUSDT":"DEU",
+    "OMUSDT":"OMG","ZNTUSDT":"ZNT","FIRUSDT":"FIRM","PRIVACYUSDT":"PRIVACY",
+    "BANXAUSDT":"BANXA","REALUSDT":"REAL","PORTUSDT":"PORTO","TLOSUSDT":"TLOS",
+    "HAIUSDT":"HAI","GOALUSDT":"GALA","WOKUSDT":"WOK","MUMBAIUSDT":"MUMBAI",
+    "VINEUSDT":"VINE","TNSUSDT":"TNS","ZROUSDT":"ZRO",
+    "PIXELFUSDT":"PIXELF","VRDRWDUSDT":"VRDRWD","ULTUSDT":"ULT",
+    "PQUSDT":"PQ","PROPUSDT":"PROP","READYUSDT":"READY","CACUSDT":"CAC",
+    "TENSORSUSDT":"TENSORS","AF8USDT":"AF8","CEEDUSDT":"CEED",
 }
 
-def cb_asset(symbol_usdt):
-    base = symbol_usdt.replace("USDT","").replace("USD","")
-    return CB_ASSET_MAP.get(symbol_usdt, base)
 
-def cb_price_for(symbol_usdt, cb_rates):
-    asset = cb_asset(symbol_usdt)
-    rate = cb_rates.get(asset)
-    if rate:
-        return float(rate)
-    # try the base name directly
-    return cb_rates.get(base_of(symbol_usdt))
+def cb_rate(sym, rates):
+    asset = CB_ASSET_FOR.get(sym)
+    if asset is None:
+        asset = sym.replace("USDT", "").replace("USD", "").upper()
+    r = rates.get(asset)
+    return float(r) if r else None
 
-def base_of(sym):
-    return sym.replace("USDT","").replace("USD","").upper()
 
-# ── Main: fetch + insert ──────────────────────────────────────────────────────
+def is_sane(price):
+    return 0.0001 < price < 1_000_000
+
+
+# ── CoinGecko id map ────────────────────────────────────────────────────────────
+CG_ID_MAP = {
+    "OKBUSDT":"okb","KCSUSDT":"kucoin-token","GTUSDT":"gatechain-token","KINUSDT":"kin",
+    "LEOUSDT":"unus-sed-leo","XMRUSDT":"monero","DENTUSDT":"dent","IOTXUSDT":"iotex",
+    "SCUSDT":"siacoin","STORJUSDT":"storj","RPLUSDT":"rocket-pool-token","NMRUSDT":"numeraire",
+    "FILUSDT":"filecoin","TFLOUSDT":"flow-token","QNTUSDT":"quant","BANDUSDT":"band-protocol",
+    "UMAUSDT":"uma","MVIUSDT":"media-vision","CVCUSDT":"coventry","DASHUSDT":"dash",
+    "ZECUSDT":"zcash","ARUSDT":"arweave","AGIUSDT":"singularitynet","DEGENUSDT":"degens-token",
+    "FCUSDT":"farcaster","YOLOUSDT":"yolo","NEIROUSDT":"neiro","MYROUSDT":"myro",
+    "MOGUSDT":"mog-coin","WENUSDT":"wen-coin","TREMPUSDT":"tremp","ADMINUSDT":"admin-coin",
+    "OHMUSDT":"olympus","DEUSDT":"decentralized-ether","OMUSDT":"omisego","ZNTUSDT":"znet",
+    "FIRUSDT":"firmachain","PRIVACYUSDT":"privacy","REALUSDT":"real-yield","PORTUSDT":"porto",
+    "TLOSUSDT":"telos","HAIUSDT":"haiku","GOALUSDT":"goal-token","VINEUSDT":"vine-co",
+    "TNSUSDT":"ternoa","ZROUSDT":"zero","ULTUSDT":"ultimate-backdrop",
+}
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────────
 def main():
     db = sqlite3.connect(DB_PATH)
-    db.execute('PRAGMA journal_mode=WAL')
+    db.execute("PRAGMA journal_mode=WAL")
     cs = db.cursor()
 
-    # get current list of missing symbols
     missing = cs.execute(
-        'SELECT symbol FROM candle_sources '
-        'LEFT JOIN (SELECT symbol, COUNT(*) as n FROM candles GROUP BY symbol) c USING(symbol) '
-        'WHERE c.n < 50 OR c.n IS NULL ORDER BY symbol'
+        "SELECT symbol FROM candle_sources "
+        "LEFT JOIN (SELECT symbol, COUNT(*) as n FROM candles GROUP BY symbol) c USING(symbol) "
+        "WHERE c.n < 50 OR c.n IS NULL ORDER BY symbol"
     ).fetchall()
     missing_syms = [r[0] for r in missing]
     print(f"Missing symbols to fill: {len(missing_syms)}")
+    if not missing_syms:
+        print("  Nothing to fill — DB is complete.")
+        db.close()
+        return
 
-    # fetch Coinbase rates upfront (one call for all)
-    print("Fetching Coinbase exchange rates (652 coins)...")
-    cb_rates = coinbase_price()
-    print(f"  Coinbase returned {len(cb_rates)} assets")
-    if not cb_rates:
-        print("  ⚠ Coinbase snapshot failed — continuing with CoinGecko only")
+    # Fetch Coinbase rates upfront (one call)
+    print("Fetching Coinbase /v2/exchange-rates ...")
+    cb_rates = coinbase_rates()
+    print(f"  → {len(cb_rates)} rates")
 
     results = []
     for sym in missing_syms:
         cg_id = CG_ID_MAP.get(sym)
         candle_rows = None
+        source = None
 
-        # try CoinGecko first
-        if cg_id:
-            print(f"  [{sym}] trying CoinGecko id={cg_id} ...", end=' ', flush=True)
-            candle_rows = cg_daily(sym, cg_id)
-            if candle_rows:
-                print(f"OK  ({len(candle_rows)} daily candles)")
+        # Tier 1: Yahoo Finance 180d
+        print(f"  [{sym:15s}] Yahoo ...", end=' ', flush=True)
+        rows = yahoo_daily(sym, max_days=180)
+        if rows and len(rows) >= 10:
+            candle_rows = rows
+            source = "yahoo"
+            print(f"✓ {len(rows)}d [yahoo]")
+        else:
+            print("✗", end=' ')
+
+        # Tier 2: CoinGecko 90d
+        if not candle_rows and cg_id:
+            print("CG ...", end=' ', flush=True)
+            rows = cg_daily(cg_id, max_days=90)
+            if rows and len(rows) >= 10:
+                candle_rows = rows
+                source = "coingecko"
+                print(f"✓ {len(rows)}d [cg]")
             else:
-                print("FAIL")
+                print("✗", end=' ')
+        elif not candle_rows:
+            print("CG n/a", end=' ')
 
-        # fallback: Coinbase price as single daily candle (close=current price)
+        # Tier 3: Coinbase synthetic (only sanity-checked)
         if not candle_rows:
-            price = cb_price_for(sym, cb_rates)
-            if price:
-                # use yesterday as open, today as close (rough, but at least we have data)
-                ts_day = int((now - timedelta(days=1)).timestamp())
-                candle_rows = [(ts_day, price*0.98, price, price*0.97, price, price)]
-                print(f"  [{sym}] Coinbase price=${price:.4f} → synthetic 1 daily candle")
+            rate = cb_rate(sym, cb_rates)
+            if rate and is_sane(rate):
+                ts_y = int((now - timedelta(days=1)).timestamp())
+                candle_rows = [(ts_y, rate, rate, rate, rate, rate)]
+                source = "coinbase"
+                print(f"CB ${rate:.4f} → 1d synth")
             else:
-                print(f"  [{sym}] all sources fail — mark as unavailable")
+                print("all fail → unavailable")
 
-        # insert into DB
-        if candle_rows:
+        # Insert
+        if candle_rows and source:
             for (ts, o, h, l, c, v) in candle_rows:
                 cs.execute(
-                    'INSERT OR REPLACE INTO candles (symbol, tf, ts, open, high, low, close, volume, source, fetched_at) '
-                    'VALUES (?,?,?,?,?,?,?,?,?,?)',
-                    (sym, '1d', int(ts), o, h, l, c, v,
-                     'coingecko' if cg_id else 'coinbase', int(now.timestamp()))
+                    "INSERT OR REPLACE INTO candles (symbol, tf, ts, open, high, low, close, volume, source, fetched_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (sym, "1d", ts, o, h, l, c, v, source, int(now.timestamp()))
                 )
             db.commit()
-            results.append((sym, 'coingecko' if cg_id else 'coinbase', len(candle_rows)))
+            results.append((sym, source, len(candle_rows)))
         else:
-            results.append((sym, 'none', 0))
+            results.append((sym, "none", 0))
 
-        time.sleep(0.5)  # gentle rate-limit to CG
+        time.sleep(0.3)
 
+    # Summary
     print()
-    print("─" * 50)
-    print(f"  Filled:  {sum(1 for _,src,n in results if n>0)}/{len(results)}")
-    print(f"  Unfilled: {sum(1 for _,src,n in results if n==0)}/{len(results)}")
+    print("─" * 60)
+    n_real = sum(1 for _, src, n in results if n >= 10)
+    n_synth = sum(1 for _, src, n in results if 0 < n < 10)
+    n_none = sum(1 for _, src, n in results if n == 0)
+    print(f"  Real data (≥10 candles):  {n_real}/{len(results)}")
+    print(f"  Synthetic (1 candle):     {n_synth}/{len(results)}")
+    print(f"  Still unavailable:        {n_none}/{len(results)}")
     print()
     for sym, src, n in results:
-        status = f"✓ {n}d [{src}]" if n > 0 else "✗ UNFILLED"
-        print(f"  {sym:15s}  {status}")
+        if n >= 10:
+            tag = f"✓ {n:3d}d [{src}]"
+        elif n > 0:
+            tag = f"○ {n}d [{src}] (synth)"
+        else:
+            tag = "✗ unavailable"
+        print(f"  {sym:15s}  {tag}")
 
-    # print final stats
-    cnt = cs.execute('SELECT COUNT(DISTINCT symbol) FROM candles').fetchone()[0]
-    print(f"\n  Total symbols with candles: {cnt}")
+    total = db.execute("SELECT COUNT(DISTINCT symbol) FROM candles").fetchone()[0]
+    print(f"\nTotal symbols with candles in DB: {total}")
     db.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

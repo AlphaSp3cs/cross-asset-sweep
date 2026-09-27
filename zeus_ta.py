@@ -248,10 +248,13 @@ def cci(rows: List[Row], period: int = 20) -> Optional[float]:
 
 
 def roc(rows: List[Row], period: int = 14) -> Optional[float]:
-    """Rate of change (%)."""
+    """Rate of change (%). Returns None if denominator is zero."""
     if len(rows) < period + 1:
         return None
-    return 100.0 * (rows[-1][4] - rows[-period - 1][4]) / rows[-period - 1][4]
+    prev_close = rows[-period - 1][4]
+    if prev_close == 0:
+        return None
+    return 100.0 * (rows[-1][4] - prev_close) / prev_close
 
 
 # ── volatility indicators ──────────────────────────────────────────────────────
